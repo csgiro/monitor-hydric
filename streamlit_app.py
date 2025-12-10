@@ -122,6 +122,7 @@ def ler_dados_qualidade_agua():
 
 # Sidebar
 with st.sidebar:
+    st.image("assets/logo.png", use_container_width=True)
     st.title("Monitor Hídrico")
     st.markdown("---")
     # Inicializar estado da página selecionada
