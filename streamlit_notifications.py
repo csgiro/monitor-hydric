@@ -7,7 +7,7 @@ import time
 SQS_QUEUE_URL = st.secrets["SQS_QUEUE_URL"]
 AWS_REGION = st.secrets["AWS_REGION"]
 
-# --- Função para Ler da Fila ---
+
 def get_notification_from_sqs():
     """Busca (polled) uma mensagem da fila SQS."""
     try:
@@ -17,7 +17,6 @@ def get_notification_from_sqs():
             MaxNumberOfMessages=1,
             WaitTimeSeconds=5  # Long polling: eficiente, não gasta CPU
         )
-        print(response)
 
 
         # Verifica se alguma mensagem foi recebida
@@ -36,19 +35,15 @@ def get_notification_from_sqs():
             subject = sns_message_data.get('Subject', 'Sem Assunto')
             notification_message = sns_message_data.get('Message', 'Sem Mensagem')
             timestamp = sns_message_data.get('Timestamp', '')
-            print("subject")
 
             # 4. DELETAMOS a mensagem da fila.
             sqs_client.delete_message(
                 QueueUrl=SQS_QUEUE_URL,
                 ReceiptHandle=receipt_handle
             )
-            print(f"**Assunto:** {subject}\n\n**Mensagem:**\n```\n{notification_message}\n```\n*Recebido em: {timestamp}*")
-            # Retornamos os dados limpos
             return f"**Assunto:** {subject}\n\n**Mensagem:**\n```\n{notification_message}\n```\n*Recebido em: {timestamp}*"
             
     except Exception as e:
-        # Imprime o erro no console (para debug)
         print(f"Erro ao processar SQS: {e}")
         return None
     

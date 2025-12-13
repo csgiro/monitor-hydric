@@ -26,7 +26,6 @@ def buscar_dados_thingspeak():
     Busca dados reais do ThingSpeak.
     Retorna: (DataFrame, sucesso)
     """
-    print("🔄 Iniciando requisição para ThingSpeak...")
     
     try:
         # URL para buscar os últimos dados do canal
@@ -36,39 +35,29 @@ def buscar_dados_thingspeak():
             'results': 100  # Últimos 100 registros
         }
         
-        print(f"📡 URL da requisição: {url}")
-        print(f"🔑 Parâmetros: {params}")
         
         response = requests.get(url, params=params, timeout=10)
-        print(f"📊 Status da resposta: {response.status_code}")
         
         response.raise_for_status()
         
         data = response.json()
-        print(f"📋 Dados recebidos: {json.dumps(data, indent=2)}")
         
         if 'feeds' in data and len(data['feeds']) > 0:
-            print(f"✅ {len(data['feeds'])} registros encontrados")
             
             # Converter para DataFrame
             df = pd.DataFrame(data['feeds'])
-            print(f"📊 Colunas do DataFrame: {list(df.columns)}")
             
             # Converter timestamps para datetime
             if 'created_at' in df.columns:
                 df['created_at'] = pd.to_datetime(df['created_at'])
-                print("⏰ Timestamps convertidos para datetime")
             
             return df, True
         else:
-            print("⚠️ Nenhum feed encontrado nos dados")
             return None, False
             
     except requests.exceptions.RequestException as e:
-        print(f"❌ Erro de requisição: {e}")
         return None, False
     except Exception as e:
-        print(f"❌ Erro geral: {e}")
         return None, False
 
 def buscar_dados_thingspeak_ultimo():
@@ -76,26 +65,20 @@ def buscar_dados_thingspeak_ultimo():
     Busca apenas o último dado do ThingSpeak.
     Retorna: (dict, sucesso)
     """
-    print("🔄 Buscando último dado do ThingSpeak...")
     
     try:
         url = f"{THINGSPEAK_BASE_URL}/{THINGSPEAK_CHANNEL_ID}/feeds/last.json"
         params = {'api_key': THINGSPEAK_API_KEY}
         
-        print(f"📡 URL: {url}")
-        
         response = requests.get(url, params=params, timeout=10)
-        print(f"📊 Status: {response.status_code}")
         
         response.raise_for_status()
         
         data = response.json()
-        print(f"📋 Último dado: {json.dumps(data, indent=2)}")
         
         return data, True
         
     except Exception as e:
-        print(f"❌ Erro ao buscar último dado: {e}")
         return None, False
 
 def processar_dados_thingspeak(df_thingspeak):
@@ -113,16 +96,13 @@ def processar_dados_thingspeak(df_thingspeak):
     print("🔧 Processando dados do ThingSpeak...")
     
     if df_thingspeak is None or len(df_thingspeak) == 0:
-        print("⚠️ Nenhum dado para processar")
         return None
     
     # Mostrar campos disponíveis
     campos_disponiveis = [col for col in df_thingspeak.columns if col.startswith('field')]
-    print(f"📊 Campos disponíveis: {campos_disponiveis}")
     
     # Pegar o último registro
     ultimo_registro = df_thingspeak.iloc[-1]
-    print(f"📋 Último registro: {ultimo_registro.to_dict()}")
     
     # Função auxiliar para converter valores com segurança
     def safe_float(value, default):
@@ -141,15 +121,12 @@ def processar_dados_thingspeak(df_thingspeak):
         'solidos_dissolvidos': safe_float(ultimo_registro.get('field4'), 0) if 'field4' in df_thingspeak.columns else 0,
     }
     
-    print(f"📊 Dados processados: {dados_processados}")
-    
     return dados_processados
 
 def criar_historico_qualidade(df_thingspeak):
     """
     Cria DataFrame com histórico de qualidade da água baseado nos dados do ThingSpeak.
     """
-    print("📈 Criando histórico de qualidade da água...")
     
     if df_thingspeak is None or len(df_thingspeak) == 0:
         print("⚠️ Nenhum dado para criar histórico")
@@ -183,9 +160,6 @@ def criar_historico_qualidade(df_thingspeak):
         if 'created_at' in df_thingspeak.columns:
             df_qualidade.index = df_thingspeak['created_at']
         
-        print(f"✅ Histórico criado com {len(df_qualidade)} registros")
-        print(f"📊 Colunas: {list(df_qualidade.columns)}")
-        
         return df_qualidade
     else:
         print("⚠️ Nenhum campo de qualidade encontrado")
@@ -206,13 +180,7 @@ def calcular_qualidade_agua(turbidez, ph, temperatura, solidos_dissolvidos):
     ph = float(ph) if ph is not None else 7.0
     temperatura = float(temperatura) if temperatura is not None else 25
     solidos_dissolvidos = float(solidos_dissolvidos) if solidos_dissolvidos is not None else 0
-    
-    print(f"🧮 Calculando qualidade da água...")
-    print(f"   Turbidez: {turbidez} NTU")
-    print(f"   pH: {ph}")
-    print(f"   Temperatura: {temperatura}°C")
-    print(f"   Sólidos Dissolvidos: {solidos_dissolvidos} mg/L")
-    
+
     # Normalização dos parâmetros (0-100)
     # Turbidez: ideal 0-1 NTU, aceitável até 5 NTU
     turbidez_score = max(0, 100 - turbidez * 20) if turbidez <= 5 else 0
@@ -237,12 +205,5 @@ def calcular_qualidade_agua(turbidez, ph, temperatura, solidos_dissolvidos):
     
     # Média ponderada (todos com peso igual)
     qualidade = (turbidez_score + ph_score + temp_score + solidos_score) / 4
-    
-    print(f"📊 Scores individuais:")
-    print(f"   Turbidez: {turbidez_score:.1f}%")
-    print(f"   pH: {ph_score:.1f}%")
-    print(f"   Temperatura: {temp_score:.1f}%")
-    print(f"   Sólidos Dissolvidos: {solidos_score:.1f}%")
-    print(f"🎯 Qualidade Geral: {qualidade:.1f}%")
     
     return qualidade

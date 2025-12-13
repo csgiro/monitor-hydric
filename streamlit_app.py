@@ -11,7 +11,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -117,13 +118,71 @@ def ler_dados_qualidade_agua():
     return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, historico_qualidade
 
 # =============================================================================
+# FUNÇÕES AUXILIARES PARA GRÁFICOS
+# =============================================================================
+
+def configurar_grafico_plotly(fig, df_data):
+    """
+    Configura gráfico Plotly com tradução de meses para português e range inicial de 3 dias.
+    """
+    # Dicionário de meses em português
+    meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    
+    # Calcular range inicial (últimos 3 dias)
+    range_min = None
+    range_max = None
+    
+    if df_data is not None and len(df_data) > 0 and isinstance(df_data.index, pd.DatetimeIndex):
+        data_max = df_data.index.max()
+        data_min_range = data_max - timedelta(days=3)
+        # Garantir que não vamos além dos dados disponíveis
+        data_real_min = df_data.index.min()
+        if data_min_range < data_real_min:
+            data_min_range = data_real_min
+        
+        range_min = data_min_range
+        range_max = data_max
+    
+    # Configurar formato de data e range inicial
+    # Usar formato brasileiro (dd/mm/yyyy) para evitar nomes de meses em inglês
+    fig.update_xaxes(
+        title_text="",
+        tickformat='%d/%m/%Y<br>%H:%M',
+        hoverformat='%d/%m/%Y %H:%M',
+        range=[range_min, range_max] if range_min and range_max else None,
+        autorange=False  # Desabilitar autorange para manter o range inicial, mas permite zoom manual
+    )
+    
+    # Atualizar hovertemplate para usar formato brasileiro com meses em português
+    for trace in fig.data:
+        if hasattr(trace, 'hovertemplate') and trace.hovertemplate:
+            # Substituir nomes de meses em inglês por português usando formato customizado
+            # O Plotly usará o formato especificado em hoverformat
+            pass
+    
+    # Configurar layout geral
+    fig.update_layout(
+        xaxis=dict(
+            type='date',
+            showgrid=True,
+            gridcolor='rgba(128, 128, 128, 0.2)'
+        ),
+        hovermode='x unified'
+    )
+    
+    return fig
+
+# =============================================================================
 # INTERFACE STREAMLIT
 # =============================================================================
 
 # Sidebar
 with st.sidebar:
-    st.image("assets/logo.png", use_container_width=True)
-    st.title("Monitor Hídrico")
+    st.markdown(
+        "<h1 style='text-align: center;'>Monitor Hídrico</h1>",
+        unsafe_allow_html=True
+    )
     st.markdown("---")
     # Inicializar estado da página selecionada
     if 'page' not in st.session_state:
@@ -224,7 +283,12 @@ if opcao == "🏠 Dashboard":
         st.stop()
 
     # Espaço reservado para o tempo da última atualização e botão de atualizar
-    ultima_atualizacao = datetime.now().strftime("%H:%M:%S")
+    # Converter UTC para UTC-3 (Horário de Brasília)
+    utc = pytz.UTC
+    brasilia_tz = pytz.timezone('America/Sao_Paulo')
+    agora_utc = datetime.now(utc)
+    agora_brasilia = agora_utc.astimezone(brasilia_tz)
+    ultima_atualizacao = agora_brasilia.strftime("%H:%M:%S")
     col_info, col_btn = st.columns([4, 1])
     
     with col_info:
@@ -235,26 +299,26 @@ if opcao == "🏠 Dashboard":
             st.cache_data.clear()
             st.rerun()
 
-    # 2. SEÇÃO DE MÉTRICAS ATUAIS (CARDS)
-    st.markdown("## Dados Atuais")
+    # 2. SEÇÃO DE MÉTRICAS ATUAIS (CARDS) - Indicadores de Qualidade
+    st.markdown("## Indicadores de Qualidade Atual")
+
+    # Calcular qualidade geral
+    qualidade_atual = calcular_qualidade_agua(turbidez_atual, ph_atual, temperatura_atual, solidos_atual)
 
     col1, col2, col3, col4 = st.columns(4)
 
-    # Métrica 1: Nível do Reservatório (simulado)
-    nivel_cor = 'normal' 
-    if nivel < 20:
-        nivel_cor = 'inverse'
-    elif nivel < 50:
-        nivel_cor = 'inverse'
+    # Métrica 1: Turbidez
+    turbidez_status = "Normal" if turbidez_atual <= 5.0 else "Alerta"
+    turbidez_cor = 'normal' if turbidez_atual <= 5.0 else 'inverse'
 
     col1.metric(
-        label="Nível do Reservatório",
-        value=f"{nivel:.1f} %",
-        delta_color=nivel_cor, 
-        delta="Nível do Momento"
+        label="Turbidez",
+        value=f"{turbidez_atual:.2f} NTU",
+        delta=turbidez_status,
+        delta_color=turbidez_cor
     )
 
-    # Métrica 2: Temperatura da Água (real do ThingSpeak)
+    # Métrica 2: Temperatura da Água
     temp_status = "Alerta" if temperatura_atual >= 30 else "Normal"
     temp_cor = 'inverse' if temperatura_atual >= 30 else 'normal'
 
@@ -265,37 +329,42 @@ if opcao == "🏠 Dashboard":
         delta_color=temp_cor
     )
 
-    # Métrica 3: Vazão Atual (simulado)
-    delta_vazao = vazao - 5.0
-    delta_vazao_cor = 'normal' if abs(delta_vazao) < 1.0 else 'inverse'
+    # Métrica 3: TDS (Sólidos Dissolvidos)
+    tds_status = "Normal" if solidos_atual <= 1000 else "Alerta"
+    tds_cor = 'normal' if solidos_atual <= 1000 else 'inverse'
 
     col3.metric(
-        label="Vazão Atual",
-        value=f"{vazao:.2f} L/min",
-        delta=f"{delta_vazao:+.2f} L/min vs Normal",
-        delta_color=delta_vazao_cor
+        label="TDS",
+        value=f"{solidos_atual:.0f} mg/L",
+        delta=tds_status,
+        delta_color=tds_cor
     )
 
-    # Métrica 4: Status Operacional (baseado em dados reais)
-    if nivel < 20 or temperatura_atual >= 30:
-        status_emoji = "🔴"
-        status_texto = "ALERTA CRÍTICO"
-        status_cor = "red"
-    elif nivel < 50:
-        status_emoji = "🟠"
-        status_texto = "ATENÇÃO"
-        status_cor = "orange"
+    # Métrica 4: Qualidade Geral
+    if qualidade_atual >= 80:
+        qualidade_emoji = "🟢"
+        qualidade_texto = "EXCELENTE"
+        qualidade_cor = "green"
+    elif qualidade_atual >= 60:
+        qualidade_emoji = "🟡"
+        qualidade_texto = "BOA"
+        qualidade_cor = "#FFC107"
+    elif qualidade_atual >= 40:
+        qualidade_emoji = "🟠"
+        qualidade_texto = "REGULAR"
+        qualidade_cor = "orange"
     else:
-        status_emoji = "🟢"
-        status_texto = "OPERACIONAL"
-        status_cor = "green"
+        qualidade_emoji = "🔴"
+        qualidade_texto = "RUIM"
+        qualidade_cor = "red"
 
     with col4:
         st.markdown(
             f"""
-            <div style="padding: 10px; border-radius: 8px; border: 1px solid lightgray; text-align: center; background-color: {status_cor}; color: white; margin-top: 15px;">
-                <p style="font-size: 16px; margin: 0; font-weight: bold;">Status do Sistema</p>
-                <p style="font-size: 24px; margin: 0; font-weight: bold;">{status_emoji} {status_texto}</p>
+            <div style="padding: 10px; border-radius: 8px; border: 1px solid lightgray; text-align: center; background-color: {qualidade_cor}; color: white; margin-top: 15px;">
+                <p style="font-size: 16px; margin: 0; font-weight: bold;">Qualidade Geral</p>
+                <p style="font-size: 24px; margin: 0; font-weight: bold;">{qualidade_emoji} {qualidade_texto}</p>
+                <p style="font-size: 20px; margin: 5px 0 0 0; font-weight: bold;">{qualidade_atual:.1f}%</p>
             </div>
             """,
             unsafe_allow_html=True
@@ -312,6 +381,8 @@ if opcao == "🏠 Dashboard":
         fig_turbidez.add_hline(y=1, line_dash="dash", line_color="green", annotation_text="Ideal (1 NTU)")
         fig_turbidez.add_hline(y=5, line_dash="dash", line_color="orange", annotation_text="Aceitável (5 NTU)")
         fig_turbidez.update_layout(height=300)
+        fig_turbidez.update_xaxes(title_text="")
+        fig_turbidez = configurar_grafico_plotly(fig_turbidez, df_qualidade)
         st.plotly_chart(fig_turbidez, use_container_width=True)
 
     # Gráfico 2: pH
@@ -321,6 +392,8 @@ if opcao == "🏠 Dashboard":
         fig_ph.add_hline(y=6.5, line_dash="dash", line_color="orange", annotation_text="Limite Mínimo (6.5)")
         fig_ph.add_hline(y=8.5, line_dash="dash", line_color="orange", annotation_text="Limite Máximo (8.5)")
         fig_ph.update_layout(height=300)
+        fig_ph.update_xaxes(title_text="")
+        fig_ph = configurar_grafico_plotly(fig_ph, df_qualidade)
         st.plotly_chart(fig_ph, use_container_width=True)
 
     # Gráfico 3: Temperatura
@@ -329,6 +402,8 @@ if opcao == "🏠 Dashboard":
         fig_temp.add_hline(y=22.5, line_dash="dash", line_color="green", annotation_text="Ideal (22.5°C)")
         fig_temp.add_hline(y=25, line_dash="dash", line_color="orange", annotation_text="Limite Superior (25°C)")
         fig_temp.update_layout(height=300)
+        fig_temp.update_xaxes(title_text="")
+        fig_temp = configurar_grafico_plotly(fig_temp, df_qualidade)
         st.plotly_chart(fig_temp, use_container_width=True)
 
     # Gráfico 4: Sólidos Dissolvidos (TDS)
@@ -337,11 +412,11 @@ if opcao == "🏠 Dashboard":
         fig_solidos.add_hline(y=500, line_dash="dash", line_color="green", annotation_text="Ideal (500 mg/L)")
         fig_solidos.add_hline(y=1000, line_dash="dash", line_color="orange", annotation_text="Aceitável (1000 mg/L)")
         fig_solidos.update_layout(height=300)
+        fig_solidos.update_xaxes(title_text="")
+        fig_solidos = configurar_grafico_plotly(fig_solidos, df_qualidade)
         st.plotly_chart(fig_solidos, use_container_width=True)
 
     # Gráfico 5: Qualidade Geral da Água
-    qualidade_atual = calcular_qualidade_agua(turbidez_atual, ph_atual, temperatura_atual, solidos_atual)
-    
     # Calcular histórico de qualidade
     if df_qualidade is not None and len(df_qualidade) > 0:
         qualidade_hist = []
@@ -359,22 +434,9 @@ if opcao == "🏠 Dashboard":
         fig_qualidade.add_hline(y=60, line_dash="dash", line_color="orange", annotation_text="Qualidade Regular (60%)")
         fig_qualidade.add_hline(y=40, line_dash="dash", line_color="red", annotation_text="Qualidade Ruim (40%)")
         fig_qualidade.update_layout(height=300)
+        fig_qualidade.update_xaxes(title_text="")
+        fig_qualidade = configurar_grafico_plotly(fig_qualidade, df_qualidade)
         st.plotly_chart(fig_qualidade, use_container_width=True)
-
-    # Métricas de qualidade atual
-    st.markdown("### Indicadores de Qualidade Atual")
-    col_q1, col_q2, col_q3, col_q4, col_q5 = st.columns(5)
-    
-    with col_q1:
-        st.metric("Turbidez", f"{turbidez_atual:.2f} NTU")
-    with col_q2:
-        st.metric("pH", f"{ph_atual:.2f}")
-    with col_q3:
-        st.metric("Temperatura", f"{temperatura_atual:.1f}°C")
-    with col_q4:
-        st.metric("TDS", f"{solidos_atual:.0f} mg/L")
-    with col_q5:
-        st.metric("Qualidade Geral", f"{qualidade_atual:.1f}%")
 
 elif opcao == "🔔 Notificações":
     st.title("🔔 Notificações e Alertas")
