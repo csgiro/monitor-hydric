@@ -84,30 +84,92 @@ def ler_dados_simulados():
 @st.cache_data(ttl=2)
 def ler_dados_qualidade_agua():
     """
-    Simula dados de qualidade da água: turbidez, pH, temperatura e sólidos dissolvidos.
+    Gera dados mockados de qualidade da água dos últimos 15 dias com variações nas faixas (ideal, alerta, crítico).
+    Ranges baseados em:
+    - Turbidez: Ideal < 1.0, Alerta 1.0-5.0, Crítico > 5.0
+    - TDS: Ideal < 500, Alerta 500-1000, Crítico > 1000
+    - pH: Ideal 6.5-8.5, Alerta 6.0-6.5 ou 8.5-9.5, Crítico < 6.0 ou > 9.5
+    - Temp: Ideal 20-28°C, Alerta variação > 3°C, Crítico variação > 5°C
     """
-    # Dados atuais
-    turbidez_atual = np.random.uniform(TURBIDEZ_MIN, TURBIDEZ_MAX)
-    ph_atual = np.random.uniform(PH_MIN, PH_MAX)
-    temperatura_atual = np.random.uniform(TEMP_MIN, TEMP_MAX)
-    solidos_atual = np.random.uniform(SOLIDOS_MIN, SOLIDOS_MAX)
+    # Criar índices para os últimos 15 dias (1 ponto a cada hora)
+    agora = datetime.now()
+    fim_mock = agora
+    inicio_mock = fim_mock - timedelta(days=15)
+    indices = pd.date_range(start=inicio_mock, end=fim_mock, freq='1h')
+    num_pontos = len(indices)
     
-    # Histórico (últimas 2 horas)
-    num_pontos = 60
-    indices = pd.date_range(end=datetime.now(), periods=num_pontos, freq='2min')
+    # Criar arrays para cada parâmetro com variações nas faixas
+    turbidez_hist = []
+    ph_hist = []
+    temp_hist = []
+    solidos_hist = []
     
-    # Simulação de tendências com ruído
-    turbidez_hist = np.linspace(1, turbidez_atual, num_pontos) + np.random.normal(0, 0.2, num_pontos)
-    ph_hist = np.linspace(7.2, ph_atual, num_pontos) + np.random.normal(0, 0.1, num_pontos)
-    temp_hist = np.linspace(25, temperatura_atual, num_pontos) + np.random.normal(0, 1, num_pontos)
-    solidos_hist = np.linspace(200, solidos_atual, num_pontos) + np.random.normal(0, 50, num_pontos)
+    # Gerar dados com variações aleatórias entre as faixas
+    for i in range(num_pontos):
+        # TURBIDEZ: alternar entre ideal, alerta e crítico
+        rand = np.random.random()
+        if rand < 0.6:  # 60% ideal
+            turbidez = np.random.uniform(0.1, 0.9)
+        elif rand < 0.9:  # 30% alerta
+            turbidez = np.random.uniform(1.0, 5.0)
+        else:  # 10% crítico
+            turbidez = np.random.uniform(5.0, 7.0)
+        turbidez_hist.append(turbidez)  
+        # pH: alternar entre ideal, alerta e crítico
+        rand = np.random.random()
+        if rand < 0.7:  # 70% ideal
+            ph = np.random.uniform(6.5, 8.5)
+        elif rand < 0.95:  # 25% alerta
+            if np.random.random() < 0.5:
+                ph = np.random.uniform(6.0, 6.5)  # Alerta baixo
+            else:
+                ph = np.random.uniform(8.0, 9)  # Alerta alto
+        else:  # 5% crítico
+            if np.random.random() < 0.5:
+                ph = np.random.uniform(5.0, 6.0)  # Crítico baixo
+            else:
+                ph = np.random.uniform(8.5, 9)  # Crítico alto
+        ph_hist.append(ph)
+        
+        # TEMPERATURA: alternar entre ideal, alerta e crítico
+        rand = np.random.random()
+        if rand < 0.65:  # 65% ideal
+            temp = np.random.uniform(20, 28)
+        elif rand < 0.9:  # 25% alerta (variação > 3°C)
+            if np.random.random() < 0.5:
+                temp = np.random.uniform(17, 20)  # Alerta baixo
+            else:
+                temp = np.random.uniform(24, 27)  # Alerta alto
+        else:  # 10% crítico (variação > 5°C)
+            if np.random.random() < 0.5:
+                temp = np.random.uniform(17, 20)  # Crítico baixo
+            else:
+                temp = np.random.uniform(30, 32)  # Crítico alto
+        temp_hist.append(temp)
+        
+        # TDS (Sólidos Dissolvidos): alternar entre ideal, alerta e crítico
+        rand = np.random.random()
+        if rand < 0.6:  # 60% ideal
+            tds = np.random.uniform(50, 500)
+        elif rand < 0.9:  # 30% alerta
+            tds = np.random.uniform(500, 600)
+        else:  # 10% crítico
+            tds = np.random.uniform(550, 650)
+        solidos_hist.append(tds)
     
-    # Garantir limites realistas
-    turbidez_hist = np.clip(turbidez_hist, TURBIDEZ_MIN, TURBIDEZ_MAX)
-    ph_hist = np.clip(ph_hist, PH_MIN, PH_MAX)
-    temp_hist = np.clip(temp_hist, TEMP_MIN, TEMP_MAX)
-    solidos_hist = np.clip(solidos_hist, SOLIDOS_MIN, SOLIDOS_MAX)
+    # Converter para arrays numpy
+    turbidez_hist = np.array(turbidez_hist)
+    ph_hist = np.array(ph_hist)
+    temp_hist = np.array(temp_hist)
+    solidos_hist = np.array(solidos_hist)
     
+    # Valores atuais (último ponto)
+    turbidez_atual = turbidez_hist[-1]
+    ph_atual = ph_hist[-1]
+    temperatura_atual = temp_hist[-1]
+    solidos_atual = solidos_hist[-1]
+    
+    # Criar DataFrame com histórico
     historico_qualidade = pd.DataFrame({
         'Turbidez (NTU)': turbidez_hist,
         'pH': ph_hist,
@@ -117,56 +179,118 @@ def ler_dados_qualidade_agua():
     
     return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, historico_qualidade
 
+def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
+    """
+    Combina dados mockados (últimos 15 dias) com dados reais do ThingSpeak.
+    - Dados mockados: últimos 15 dias
+    - Dados reais: sobrescrevem os mockados se houver sobreposição
+    
+    Args:
+        df_qualidade_real: DataFrame com dados reais do ThingSpeak (pode ser None)
+        dados_processados: Dicionário com dados atuais processados do ThingSpeak
+    
+    Returns:
+        Tuple: (turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade_combinado)
+    """
+    # Gerar dados mockados dos últimos 15 dias
+    _, _, _, _, df_qualidade_mock = ler_dados_qualidade_agua()
+    
+    # Se não houver dados reais, retornar apenas os mockados
+    if df_qualidade_real is None or len(df_qualidade_real) == 0:
+        print("📊 Usando apenas dados mockados (sem dados reais do ThingSpeak)")
+        turbidez_atual = df_qualidade_mock['Turbidez (NTU)'].iloc[-1]
+        ph_atual = df_qualidade_mock['pH'].iloc[-1]
+        temperatura_atual = df_qualidade_mock['Temperatura (°C)'].iloc[-1]
+        solidos_atual = df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1]
+        return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade_mock
+    
+    # Usar dados atuais reais do processamento
+    if dados_processados:
+        turbidez_atual = dados_processados.get('turbidez', df_qualidade_mock['Turbidez (NTU)'].iloc[-1])
+        ph_atual = dados_processados.get('ph', df_qualidade_mock['pH'].iloc[-1])
+        temperatura_atual = dados_processados.get('temperatura', df_qualidade_mock['Temperatura (°C)'].iloc[-1])
+        solidos_atual = dados_processados.get('solidos_dissolvidos', df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1])
+    else:
+        turbidez_atual = df_qualidade_mock['Turbidez (NTU)'].iloc[-1]
+        ph_atual = df_qualidade_mock['pH'].iloc[-1]
+        temperatura_atual = df_qualidade_mock['Temperatura (°C)'].iloc[-1]
+        solidos_atual = df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1]
+    
+    # Garantir que ambos os índices são DatetimeIndex
+    if not isinstance(df_qualidade_real.index, pd.DatetimeIndex):
+        print("⚠️ Índice do DataFrame real não é DatetimeIndex")
+        return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade_mock
+    
+    # Normalizar timezones (remover timezone para comparação)
+    try:
+        if hasattr(df_qualidade_real.index, 'tz') and df_qualidade_real.index.tz is not None:
+            df_qualidade_real.index = df_qualidade_real.index.tz_localize(None)
+    except (AttributeError, TypeError):
+        pass
+    
+    try:
+        if hasattr(df_qualidade_mock.index, 'tz') and df_qualidade_mock.index.tz is not None:
+            df_qualidade_mock.index = df_qualidade_mock.index.tz_localize(None)
+    except (AttributeError, TypeError):
+        pass
+    
+    # Combinar: manter dados mockados e sobrescrever com dados reais onde houver
+    # Criar uma cópia do DataFrame mockado
+    df_combinado = df_qualidade_mock.copy()
+    
+    # Para cada registro real, sobrescrever o mockado se existir ou adicionar se for mais recente
+    for idx in df_qualidade_real.index:
+        if idx in df_combinado.index:
+            # Sobrescrever dados mockados com dados reais
+            df_combinado.loc[idx] = df_qualidade_real.loc[idx]
+        elif idx > df_combinado.index.max():
+            # Adicionar dados reais mais recentes que os mockados
+            df_combinado = pd.concat([df_combinado, df_qualidade_real.loc[[idx]]])
+    
+    df_combinado = df_combinado.sort_index()
+    
+    print(f"✅ Dados combinados: {len(df_qualidade_mock)} pontos mockados + {len(df_qualidade_real)} pontos reais = {len(df_combinado)} total")
+    
+    return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_combinado
+
 # =============================================================================
 # FUNÇÕES AUXILIARES PARA GRÁFICOS
 # =============================================================================
 
 def configurar_grafico_plotly(fig, df_data):
     """
-    Configura gráfico Plotly com tradução de meses para português e range inicial de 3 dias.
+    Configura gráfico Plotly com range inicial de 3 dias.
+    Usuário pode fazer zoom out. Autoscale/Reset retorna aos últimos 3 dias.
     """
-    # Dicionário de meses em português
-    meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-    
     # Calcular range inicial (últimos 3 dias)
-    range_min = None
-    range_max = None
+    range_min_str = None
+    range_max_str = None
     
     if df_data is not None and len(df_data) > 0 and isinstance(df_data.index, pd.DatetimeIndex):
         data_max = df_data.index.max()
+        data_min = df_data.index.min()
         data_min_range = data_max - timedelta(days=3)
-        # Garantir que não vamos além dos dados disponíveis
-        data_real_min = df_data.index.min()
-        if data_min_range < data_real_min:
-            data_min_range = data_real_min
         
-        range_min = data_min_range
-        range_max = data_max
+        # Garantir que não vamos além dos dados disponíveis
+        if data_min_range < data_min:
+            data_min_range = data_min
+        
+        # Converter para string ISO para garantir interpretação correta pelo Plotly
+        range_min_str = data_min_range.strftime('%Y-%m-%d %H:%M:%S')
+        range_max_str = data_max.strftime('%Y-%m-%d %H:%M:%S')
     
-    # Configurar formato de data e range inicial
-    # Usar formato brasileiro (dd/mm/yyyy) para evitar nomes de meses em inglês
-    fig.update_xaxes(
-        title_text="",
-        tickformat='%d/%m/%Y<br>%H:%M',
-        hoverformat='%d/%m/%Y %H:%M',
-        range=[range_min, range_max] if range_min and range_max else None,
-        autorange=False  # Desabilitar autorange para manter o range inicial, mas permite zoom manual
-    )
-    
-    # Atualizar hovertemplate para usar formato brasileiro com meses em português
-    for trace in fig.data:
-        if hasattr(trace, 'hovertemplate') and trace.hovertemplate:
-            # Substituir nomes de meses em inglês por português usando formato customizado
-            # O Plotly usará o formato especificado em hoverformat
-            pass
-    
-    # Configurar layout geral
+    # Configurar layout geral com range exato de 3 dias
     fig.update_layout(
         xaxis=dict(
+            title_text="",
+            tickformat='%d/%m/%Y<br>%H:%M',
+            hoverformat='%d/%m/%Y %H:%M',
             type='date',
             showgrid=True,
-            gridcolor='rgba(128, 128, 128, 0.2)'
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            range=[range_min_str, range_max_str] if range_min_str and range_max_str else None,
+            autorange=False,
+            fixedrange=False
         ),
         hovermode='x unified'
     )
@@ -187,6 +311,12 @@ with st.sidebar:
     # Inicializar estado da página selecionada
     if 'page' not in st.session_state:
         st.session_state.page = "🏠 Dashboard"
+    
+    # Inicializar contador de novas notificações e notificações vistas
+    if 'new_notifications_count' not in st.session_state:
+        st.session_state.new_notifications_count = 0
+    if 'last_seen_notifications_count' not in st.session_state:
+        st.session_state.last_seen_notifications_count = 0
     
     # CSS customizado para esconder botões padrão e estilizar como texto
     st.markdown("""
@@ -220,6 +350,22 @@ with st.sidebar:
             border: none;
             box-shadow: none;
         }
+        /* Estilo para badge de notificação */
+        .notification-badge {
+            background-color: #FF4444;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 5px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
         </style>
     """, unsafe_allow_html=True)
     
@@ -227,8 +373,20 @@ with st.sidebar:
     if st.button("🏠 Dashboard", key="btn_home", use_container_width=True):
         st.session_state.page = "🏠 Dashboard"
     
-    if st.button("🔔 Notificações", key="btn_notif", use_container_width=True):
+    # Verificar se há notificações não vistas
+    notifications_count = len(st.session_state.get('notifications', []))
+    has_unseen = notifications_count > st.session_state.last_seen_notifications_count
+    
+    # Botão de notificações com badge vermelho se houver novas
+    notif_label = "🔔 Notificações"
+    if has_unseen or st.session_state.new_notifications_count > 0:
+        notif_label = f"🔔 Notificações 🔴"
+    
+    if st.button(notif_label, key="btn_notif", use_container_width=True):
         st.session_state.page = "🔔 Notificações"
+        # Marcar notificações como vistas
+        st.session_state.last_seen_notifications_count = notifications_count
+        st.session_state.new_notifications_count = 0
     
     if st.button("🚪 Logout", key="btn_logout", use_container_width=True):
         st.session_state.page = "🚪 Logout"
@@ -250,30 +408,20 @@ if opcao == "🏠 Dashboard":
             # Processar dados do ThingSpeak
             dados_processados = processar_dados_thingspeak(df_thingspeak)
             
-            if dados_processados:
-                # Usar dados reais do ThingSpeak
-                turbidez_atual = dados_processados['turbidez']
-                ph_atual = dados_processados['ph']
-                temperatura_atual = dados_processados['temperatura']
-                solidos_atual = dados_processados['solidos_dissolvidos']
-                
-                # Criar histórico de qualidade
-                df_qualidade = criar_historico_qualidade(df_thingspeak)
-                
-                if df_qualidade is None:
-                    # Fallback para dados simulados se não conseguir criar histórico
-                    turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade = ler_dados_qualidade_agua()
-                
-                # Dados básicos simulados (não disponíveis no ThingSpeak)
-                nivel, temperatura, vazao, df_historico = ler_dados_simulados()
-                
-            else:
-                st.warning("⚠️ Erro ao processar dados do ThingSpeak, usando dados simulados")
-                turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade = ler_dados_qualidade_agua()
-                nivel, temperatura, vazao, df_historico = ler_dados_simulados()
+            # Criar histórico de qualidade do ThingSpeak
+            df_qualidade_real = criar_historico_qualidade(df_thingspeak)
+            
+            # Combinar dados mockados (15 dias) com dados reais (sobrescrever mockados onde houver real)
+            turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade = combinar_dados_mockados_e_reais(
+                df_qualidade_real, dados_processados
+            )
+            
+            # Dados básicos simulados (não disponíveis no ThingSpeak)
+            nivel, temperatura, vazao, df_historico = ler_dados_simulados()
+            
         else:
-            st.warning("⚠️ Não foi possível conectar ao ThingSpeak, usando dados simulados")
-            print("🔄 Usando dados simulados como fallback...")
+            st.warning("⚠️ Não foi possível conectar ao ThingSpeak, usando dados mockados")
+            print("🔄 Usando dados mockados como fallback...")
             turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade = ler_dados_qualidade_agua()
             nivel, temperatura, vazao, df_historico = ler_dados_simulados()
             
@@ -378,9 +526,22 @@ if opcao == "🏠 Dashboard":
     # Gráfico 1: Turbidez
     if 'Turbidez (NTU)' in df_qualidade.columns:
         fig_turbidez = px.line(df_qualidade, y='Turbidez (NTU)', title='Turbidez da Água')
-        fig_turbidez.add_hline(y=1, line_dash="dash", line_color="green", annotation_text="Ideal (1 NTU)")
-        fig_turbidez.add_hline(y=5, line_dash="dash", line_color="orange", annotation_text="Aceitável (5 NTU)")
-        fig_turbidez.update_layout(height=300)
+        fig_turbidez.add_hline(y=1, line_dash="dash", line_color="green")
+        fig_turbidez.add_hline(y=5, line_dash="dash", line_color="orange")
+        fig_turbidez.update_layout(
+            height=300,
+            annotations=[
+                dict(
+                    text="<span style='color:#00CC66'>── Ideal (1 NTU)</span><br><span style='color:#FFA500'>── Aceitável (5 NTU)</span>",
+                    xref="paper", yref="paper",
+                    x=1, y=1.28,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=11, color="white"),
+                    align="right"
+                )
+            ]
+        )
         fig_turbidez.update_xaxes(title_text="")
         fig_turbidez = configurar_grafico_plotly(fig_turbidez, df_qualidade)
         st.plotly_chart(fig_turbidez, use_container_width=True)
@@ -388,10 +549,23 @@ if opcao == "🏠 Dashboard":
     # Gráfico 2: pH
     if 'pH' in df_qualidade.columns:
         fig_ph = px.line(df_qualidade, y='pH', title='pH da Água')
-        fig_ph.add_hline(y=7.0, line_dash="dash", line_color="green", annotation_text="Neutro (7.0)")
-        fig_ph.add_hline(y=6.5, line_dash="dash", line_color="orange", annotation_text="Limite Mínimo (6.5)")
-        fig_ph.add_hline(y=8.5, line_dash="dash", line_color="orange", annotation_text="Limite Máximo (8.5)")
-        fig_ph.update_layout(height=300)
+        fig_ph.add_hline(y=7.0, line_dash="dash", line_color="green")
+        fig_ph.add_hline(y=6.5, line_dash="dash", line_color="orange")
+        fig_ph.add_hline(y=8.5, line_dash="dash", line_color="orange")
+        fig_ph.update_layout(
+            height=300,
+            annotations=[
+                dict(
+                    text="<span style='color:#00CC66'>── Neutro (7.0)</span><br><span style='color:#FFA500'>── Limites (6.5 / 8.5)</span>",
+                    xref="paper", yref="paper",
+                    x=1, y=1.28,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=11, color="white"),
+                    align="right"
+                )
+            ]
+        )
         fig_ph.update_xaxes(title_text="")
         fig_ph = configurar_grafico_plotly(fig_ph, df_qualidade)
         st.plotly_chart(fig_ph, use_container_width=True)
@@ -399,9 +573,22 @@ if opcao == "🏠 Dashboard":
     # Gráfico 3: Temperatura
     if 'Temperatura (°C)' in df_qualidade.columns:
         fig_temp = px.line(df_qualidade, y='Temperatura (°C)', title='Temperatura da Água')
-        fig_temp.add_hline(y=22.5, line_dash="dash", line_color="green", annotation_text="Ideal (22.5°C)")
-        fig_temp.add_hline(y=25, line_dash="dash", line_color="orange", annotation_text="Limite Superior (25°C)")
-        fig_temp.update_layout(height=300)
+        fig_temp.add_hline(y=22.5, line_dash="dash", line_color="green")
+        fig_temp.add_hline(y=25, line_dash="dash", line_color="orange")
+        fig_temp.update_layout(
+            height=300,
+            annotations=[
+                dict(
+                    text="<span style='color:#00CC66'>── Ideal (22.5°C)</span><br><span style='color:#FFA500'>── Limite (25°C)</span>",
+                    xref="paper", yref="paper",
+                    x=1, y=1.28,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=11, color="white"),
+                    align="right"
+                )
+            ]
+        )
         fig_temp.update_xaxes(title_text="")
         fig_temp = configurar_grafico_plotly(fig_temp, df_qualidade)
         st.plotly_chart(fig_temp, use_container_width=True)
@@ -409,9 +596,22 @@ if opcao == "🏠 Dashboard":
     # Gráfico 4: Sólidos Dissolvidos (TDS)
     if 'Sólidos Dissolvidos (mg/L)' in df_qualidade.columns:
         fig_solidos = px.line(df_qualidade, y='Sólidos Dissolvidos (mg/L)', title='Sólidos Dissolvidos (TDS)')
-        fig_solidos.add_hline(y=500, line_dash="dash", line_color="green", annotation_text="Ideal (500 mg/L)")
-        fig_solidos.add_hline(y=1000, line_dash="dash", line_color="orange", annotation_text="Aceitável (1000 mg/L)")
-        fig_solidos.update_layout(height=300)
+        fig_solidos.add_hline(y=500, line_dash="dash", line_color="green")
+        fig_solidos.add_hline(y=1000, line_dash="dash", line_color="orange")
+        fig_solidos.update_layout(
+            height=300,
+            annotations=[
+                dict(
+                    text="<span style='color:#00CC66'>── Ideal (500 mg/L)</span><br><span style='color:#FFA500'>── Aceitável (1000 mg/L)</span>",
+                    xref="paper", yref="paper",
+                    x=1, y=1.28,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=11, color="white"),
+                    align="right"
+                )
+            ]
+        )
         fig_solidos.update_xaxes(title_text="")
         fig_solidos = configurar_grafico_plotly(fig_solidos, df_qualidade)
         st.plotly_chart(fig_solidos, use_container_width=True)
@@ -430,10 +630,23 @@ if opcao == "🏠 Dashboard":
         df_qualidade['Qualidade Geral (%)'] = qualidade_hist
         
         fig_qualidade = px.line(df_qualidade, y='Qualidade Geral (%)', title='Qualidade Geral da Água')
-        fig_qualidade.add_hline(y=80, line_dash="dash", line_color="green", annotation_text="Boa Qualidade (80%)")
-        fig_qualidade.add_hline(y=60, line_dash="dash", line_color="orange", annotation_text="Qualidade Regular (60%)")
-        fig_qualidade.add_hline(y=40, line_dash="dash", line_color="red", annotation_text="Qualidade Ruim (40%)")
-        fig_qualidade.update_layout(height=300)
+        fig_qualidade.add_hline(y=80, line_dash="dash", line_color="green")
+        fig_qualidade.add_hline(y=60, line_dash="dash", line_color="orange")
+        fig_qualidade.add_hline(y=40, line_dash="dash", line_color="red")
+        fig_qualidade.update_layout(
+            height=300,
+            annotations=[
+                dict(
+                    text="<span style='color:#00CC66'>── Boa (80%)</span><br><span style='color:#FFA500'>── Regular (60%)</span><br><span style='color:#FF4444'>── Ruim (40%)</span>",
+                    xref="paper", yref="paper",
+                    x=1, y=1.28,
+                    xanchor="right", yanchor="top",
+                    showarrow=False,
+                    font=dict(size=11, color="white"),
+                    align="right"
+                )
+            ]
+        )
         fig_qualidade.update_xaxes(title_text="")
         fig_qualidade = configurar_grafico_plotly(fig_qualidade, df_qualidade)
         st.plotly_chart(fig_qualidade, use_container_width=True)
@@ -468,6 +681,10 @@ elif opcao == "🔔 Notificações":
                         # Adiciona as novas notificações no topo da lista
                         for notif in reversed(new_notifications):
                             st.session_state.notifications.insert(0, notif)
+                        
+                        # Atualizar contador de vistas (estamos na página, então marcamos como vistas)
+                        st.session_state.last_seen_notifications_count = len(st.session_state.notifications)
+                        st.session_state.new_notifications_count = 0
                         
                         st.success(f"✅ {len(new_notifications)} nova(s) notificação(ões) recebida(s)!")
                         st.rerun()
@@ -543,6 +760,10 @@ elif opcao == "🔔 Notificações":
                     # Adiciona as novas notificações no topo da lista
                     for notif in reversed(new_notifications):
                         st.session_state.notifications.insert(0, notif)
+                    
+                    # Atualizar contador de vistas (estamos na página, então marcamos como vistas)
+                    st.session_state.last_seen_notifications_count = len(st.session_state.notifications)
+                    st.session_state.new_notifications_count = 0
                 
                 # Recarrega a página
                 st.rerun()
