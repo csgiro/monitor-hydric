@@ -249,7 +249,15 @@ def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
     
     df_combinado = df_combinado.sort_index()
     
+    # Atualizar valores atuais com a última medição do DataFrame combinado
+    ultima_medicao = df_combinado.iloc[-1]
+    turbidez_atual = ultima_medicao['Turbidez (NTU)']
+    ph_atual = ultima_medicao['pH']
+    temperatura_atual = ultima_medicao['Temperatura (°C)']
+    solidos_atual = ultima_medicao['Sólidos Dissolvidos (mg/L)']
+    
     print(f"✅ Dados combinados: {len(df_qualidade_mock)} pontos mockados + {len(df_qualidade_real)} pontos reais = {len(df_combinado)} total")
+    print(f"📊 Última medição: Turbidez={turbidez_atual:.2f}, pH={ph_atual:.2f}, Temp={temperatura_atual:.1f}°C, TDS={solidos_atual:.0f}")
     
     return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_combinado
 
@@ -447,17 +455,26 @@ if opcao == "🏠 Dashboard":
             st.cache_data.clear()
             st.rerun()
 
-    # 2. SEÇÃO DE MÉTRICAS ATUAIS (CARDS) - Indicadores de Qualidade
+    # 2. SEÇÃO DE MÉTRICAS ATUAIS (CARDS) - Indicadores de Qualidade da Última Medição
     st.markdown("## Indicadores de Qualidade Atual")
+    st.caption("Dados da última medição registrada nos gráficos")
 
     # Calcular qualidade geral
     qualidade_atual = calcular_qualidade_agua(turbidez_atual, ph_atual, temperatura_atual, solidos_atual)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     # Métrica 1: Turbidez
-    turbidez_status = "Normal" if turbidez_atual <= 5.0 else "Alerta"
-    turbidez_cor = 'normal' if turbidez_atual <= 5.0 else 'inverse'
+    # Ideal < 1.0, Alerta 1.0-5.0, Crítico > 5.0
+    if turbidez_atual < 1.0:
+        turbidez_status = "Ideal"
+        turbidez_cor = 'normal'
+    elif turbidez_atual <= 5.0:
+        turbidez_status = "Atenção"
+        turbidez_cor = 'off'
+    else:
+        turbidez_status = "Crítico"
+        turbidez_cor = 'inverse'
 
     col1.metric(
         label="Turbidez",
@@ -466,29 +483,64 @@ if opcao == "🏠 Dashboard":
         delta_color=turbidez_cor
     )
 
-    # Métrica 2: Temperatura da Água
-    temp_status = "Alerta" if temperatura_atual >= 30 else "Normal"
-    temp_cor = 'inverse' if temperatura_atual >= 30 else 'normal'
+    # Métrica 2: pH
+    # Ideal 6.5-8.5, Alerta 6.0-6.5 ou 8.5-9.5, Crítico < 6.0 ou > 9.5
+    if 6.5 <= ph_atual <= 8.5:
+        ph_status = "Ideal"
+        ph_cor = 'normal'
+    elif (6.0 <= ph_atual < 6.5) or (8.5 < ph_atual <= 9.5):
+        ph_status = "Atenção"
+        ph_cor = 'off'
+    else:
+        ph_status = "Crítico"
+        ph_cor = 'inverse'
 
     col2.metric(
-        label="Temperatura da Água",
+        label="pH",
+        value=f"{ph_atual:.2f}",
+        delta=ph_status,
+        delta_color=ph_cor
+    )
+
+    # Métrica 3: Temperatura da Água
+    # Ideal 20-28°C, Alerta variação > 3°C, Crítico variação > 5°C
+    if 20 <= temperatura_atual <= 28:
+        temp_status = "Ideal"
+        temp_cor = 'normal'
+    elif 17 <= temperatura_atual < 20 or 28 < temperatura_atual <= 31:
+        temp_status = "Atenção"
+        temp_cor = 'off'
+    else:
+        temp_status = "Crítico"
+        temp_cor = 'inverse'
+
+    col3.metric(
+        label="Temperatura",
         value=f"{temperatura_atual:.1f} °C",
         delta=temp_status,
         delta_color=temp_cor
     )
 
-    # Métrica 3: TDS (Sólidos Dissolvidos)
-    tds_status = "Normal" if solidos_atual <= 1000 else "Alerta"
-    tds_cor = 'normal' if solidos_atual <= 1000 else 'inverse'
+    # Métrica 4: TDS (Sólidos Dissolvidos)
+    # Ideal < 500, Alerta 500-1000, Crítico > 1000
+    if solidos_atual < 500:
+        tds_status = "Ideal"
+        tds_cor = 'normal'
+    elif solidos_atual <= 1000:
+        tds_status = "Atenção"
+        tds_cor = 'off'
+    else:
+        tds_status = "Crítico"
+        tds_cor = 'inverse'
 
-    col3.metric(
+    col4.metric(
         label="TDS",
         value=f"{solidos_atual:.0f} mg/L",
         delta=tds_status,
         delta_color=tds_cor
     )
 
-    # Métrica 4: Qualidade Geral
+    # Métrica 5: Qualidade Geral
     if qualidade_atual >= 80:
         qualidade_emoji = "🟢"
         qualidade_texto = "EXCELENTE"
@@ -506,13 +558,13 @@ if opcao == "🏠 Dashboard":
         qualidade_texto = "RUIM"
         qualidade_cor = "red"
 
-    with col4:
+    with col5:
         st.markdown(
             f"""
             <div style="padding: 10px; border-radius: 8px; border: 1px solid lightgray; text-align: center; background-color: {qualidade_cor}; color: white; margin-top: 15px;">
-                <p style="font-size: 16px; margin: 0; font-weight: bold;">Qualidade Geral</p>
-                <p style="font-size: 24px; margin: 0; font-weight: bold;">{qualidade_emoji} {qualidade_texto}</p>
-                <p style="font-size: 20px; margin: 5px 0 0 0; font-weight: bold;">{qualidade_atual:.1f}%</p>
+                <p style="font-size: 14px; margin: 0; font-weight: bold;">Qualidade Geral</p>
+                <p style="font-size: 20px; margin: 0; font-weight: bold;">{qualidade_emoji} {qualidade_texto}</p>
+                <p style="font-size: 18px; margin: 5px 0 0 0; font-weight: bold;">{qualidade_atual:.1f}%</p>
             </div>
             """,
             unsafe_allow_html=True
