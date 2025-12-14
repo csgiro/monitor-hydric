@@ -306,11 +306,67 @@ def configurar_grafico_plotly(fig, df_data):
     return fig
 
 # =============================================================================
+# VERIFICAÇÃO DE NOTIFICAÇÕES EM BACKGROUND
+# =============================================================================
+
+def inicializar_notifications_handler():
+    """Inicializa o handler de notificações se ainda não existir."""
+    if 'notifications_handler' not in st.session_state:
+        try:
+            if "SQS_QUEUE_URL" in st.secrets and "AWS_REGION" in st.secrets:
+                st.session_state.notifications_handler = NotificationsHandler(
+                    queue_url=st.secrets["SQS_QUEUE_URL"],
+                    aws_region=st.secrets["AWS_REGION"]
+                )
+                return True
+        except Exception as e:
+            print(f"⚠️ Erro ao inicializar handler de notificações: {e}")
+            return False
+    return 'notifications_handler' in st.session_state
+
+# Inicializar lista de notificações
+if 'notifications' not in st.session_state:
+    st.session_state.notifications = []
+
+# Inicializar handler
+inicializar_notifications_handler()
+
+@st.fragment(run_every=30)  # Executa a cada 30 segundos
+def verificar_notificacoes_background():
+    """Verifica novas notificações em background a cada 30 segundos."""
+    if 'notifications_handler' not in st.session_state:
+        return
+    
+    try:
+        # Buscar novas notificações (sem bloquear a UI)
+        new_notifications = st.session_state.notifications_handler.get_all_notifications(max_messages=10)
+        
+        if new_notifications:
+            # Adiciona as novas notificações no topo da lista
+            for notif in reversed(new_notifications):
+                st.session_state.notifications.insert(0, notif)
+            
+            # Incrementar contador de novas notificações
+            st.session_state.new_notifications_count = st.session_state.get('new_notifications_count', 0) + len(new_notifications)
+            
+            print(f"🔔 {len(new_notifications)} nova(s) notificação(ões) recebida(s) em background!")
+    except Exception as e:
+        print(f"⚠️ Erro ao verificar notificações em background: {e}")
+
+# Executar verificação em background (apenas uma vez por renderização)
+verificar_notificacoes_background()
+
+# =============================================================================
 # INTERFACE STREAMLIT
 # =============================================================================
 
 # Sidebar
 with st.sidebar:
+    # Logo centralizada com tamanho reduzido (75%)
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 3, 1])
+    with col_logo2:
+        st.image("assets/logo.png", use_container_width=True)
+    
     st.markdown(
         "<h1 style='text-align: center;'>Monitor Hídrico</h1>",
         unsafe_allow_html=True
@@ -705,23 +761,15 @@ if opcao == "🏠 Dashboard":
 
 elif opcao == "🔔 Notificações":
     st.title("🔔 Notificações e Alertas")
-    st.caption("Alertas de qualidade da água recebidos via AWS SNS/SQS")
+    st.caption("Alertas de qualidade da água recebidos via AWS SNS/SQS • Atualização automática a cada 30s")
     
-    # Inicializar o handler de notificações
+    # Marcar notificações como vistas ao entrar na página
+    st.session_state.last_seen_notifications_count = len(st.session_state.notifications)
+    st.session_state.new_notifications_count = 0
+    
+    # Verificar se o handler está disponível
     try:
-        # Verificar se as credenciais AWS estão disponíveis
-        if "SQS_QUEUE_URL" in st.secrets and "AWS_REGION" in st.secrets:
-            # Inicializar handler (apenas uma vez)
-            if 'notifications_handler' not in st.session_state:
-                st.session_state.notifications_handler = NotificationsHandler(
-                    queue_url=st.secrets["SQS_QUEUE_URL"],
-                    aws_region=st.secrets["AWS_REGION"]
-                )
-            
-            # Inicializar lista de notificações
-            if 'notifications' not in st.session_state:
-                st.session_state.notifications = []
-            
+        if 'notifications_handler' in st.session_state:
             # Controles de atualização
             col_btn, col_auto = st.columns([2, 3])
             
@@ -744,7 +792,7 @@ elif opcao == "🔔 Notificações":
                         st.info("Nenhuma notificação nova na fila no momento.")
             
             with col_auto:
-                auto_refresh = st.checkbox("Auto-atualizar a cada 30s", value=False)
+                st.markdown("🔄 *Atualização automática ativa*")
             
             st.markdown("---")
             
@@ -801,25 +849,6 @@ elif opcao == "🔔 Notificações":
                     height=400
                 )
             
-            # Auto-refresh: busca automaticamente a cada 30 segundos
-            if auto_refresh:
-                time.sleep(30)
-                
-                # Buscar novas notificações automaticamente
-                new_notifications = st.session_state.notifications_handler.get_all_notifications(max_messages=10)
-                
-                if new_notifications:
-                    # Adiciona as novas notificações no topo da lista
-                    for notif in reversed(new_notifications):
-                        st.session_state.notifications.insert(0, notif)
-                    
-                    # Atualizar contador de vistas (estamos na página, então marcamos como vistas)
-                    st.session_state.last_seen_notifications_count = len(st.session_state.notifications)
-                    st.session_state.new_notifications_count = 0
-                
-                # Recarrega a página
-                st.rerun()
-                
         else:
             st.warning("⚠️ Credenciais AWS não configuradas. Configure SQS_QUEUE_URL e AWS_REGION em st.secrets.")
             
