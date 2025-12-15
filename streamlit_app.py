@@ -744,6 +744,11 @@ if opcao == "🏠 Dashboard":
         fig_qualidade.update_xaxes(title_text="")
         fig_qualidade = configurar_grafico_plotly(fig_qualidade, df_qualidade)
         st.plotly_chart(fig_qualidade, use_container_width=True)
+    
+    # Auto-refresh: atualiza automaticamente a cada 30 segundos
+    time.sleep(30)
+    st.cache_data.clear()
+    st.rerun()
 
 elif opcao == "🔔 Notificações":
     st.title("🔔 Notificações e Alertas")
