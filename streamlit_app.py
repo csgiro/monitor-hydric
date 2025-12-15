@@ -225,13 +225,20 @@ def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
                    df_mock_filtrado['Temperatura (°C)'].iloc[-1], df_mock_filtrado['Sólidos Dissolvidos (mg/L)'].iloc[-1], df_mock_filtrado
         return 0, 7.0, 25, 0, df_mock_filtrado
     
-    # Normalizar timezones (remover timezone para comparação)
+    # Converter dados do ThingSpeak de UTC para UTC-3 (Horário de Brasília)
     try:
-        if hasattr(df_qualidade_real.index, 'tz') and df_qualidade_real.index.tz is not None:
-            df_qualidade_real.index = df_qualidade_real.index.tz_localize(None)
-    except (AttributeError, TypeError):
+        if df_qualidade_real.index.tz is None:
+            # Assumir que dados do ThingSpeak estão em UTC, converter para Brasília
+            df_qualidade_real.index = pd.to_datetime(df_qualidade_real.index)
+            df_qualidade_real.index = df_qualidade_real.index - timedelta(hours=3)
+        elif hasattr(df_qualidade_real.index, 'tz') and df_qualidade_real.index.tz is not None:
+            # Se tiver timezone, converter para Brasília e remover timezone info
+            df_qualidade_real.index = df_qualidade_real.index.tz_convert('America/Sao_Paulo').tz_localize(None)
+    except (AttributeError, TypeError) as e:
+        print(f"⚠️ Erro ao converter timezone dos dados reais: {e}")
         pass
     
+    # Remover timezone do índice mockado se houver
     try:
         if hasattr(df_mock_filtrado.index, 'tz') and df_mock_filtrado.index.tz is not None:
             df_mock_filtrado.index = df_mock_filtrado.index.tz_localize(None)
