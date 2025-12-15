@@ -476,17 +476,21 @@ if opcao == "🏠 Dashboard":
         print(f"❌ Erro crítico: {e}")
         st.stop()
 
-    # Espaço reservado para o tempo da última atualização e botão de atualizar
-    # Converter UTC para UTC-3 (Horário de Brasília)
-    utc = pytz.UTC
-    brasilia_tz = pytz.timezone('America/Sao_Paulo')
-    agora_utc = datetime.now(utc)
-    agora_brasilia = agora_utc.astimezone(brasilia_tz)
-    ultima_atualizacao = agora_brasilia.strftime("%H:%M:%S")
+    # Mostrar o horário do último dado recebido do ThingSpeak
+    # Pegar o timestamp do último registro do DataFrame
+    if df_qualidade is not None and len(df_qualidade) > 0:
+        ultimo_timestamp = df_qualidade.index.max()
+        if isinstance(ultimo_timestamp, pd.Timestamp):
+            ultimo_dado_hora = ultimo_timestamp.strftime("%H:%M:%S")
+        else:
+            ultimo_dado_hora = str(ultimo_timestamp)
+    else:
+        ultimo_dado_hora = "N/A"
+    
     col_info, col_btn = st.columns([4, 1])
     
     with col_info:
-        st.info(f"Última atualização: **{ultima_atualizacao}**", icon="🕒")
+        st.info(f"Último dado recebido: **{ultimo_dado_hora}**", icon="🕒")
     
     with col_btn:
         if st.button("Atualizar Dados", key="refresh_data", use_container_width=True):
