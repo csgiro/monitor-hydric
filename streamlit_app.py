@@ -408,7 +408,7 @@ def configurar_grafico_plotly(fig, df_data):
                 active=0,
                 x=0.0,
                 xanchor="left",
-                y=1.35,
+                y=1.42,
                 yanchor="top",
                 bgcolor="rgba(0,0,0,0)",
                 bordercolor="#1f77b4",
