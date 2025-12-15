@@ -181,9 +181,10 @@ def ler_dados_qualidade_agua():
 
 def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
     """
-    Combina dados mockados (últimos 15 dias) com dados reais do ThingSpeak.
-    - Dados mockados: últimos 15 dias
-    - Dados reais: sobrescrevem os mockados se houver sobreposição
+    Combina dados mockados (até dia 13) com dados reais do ThingSpeak (dia 14 em diante).
+    - Dados mockados: até dia 13 (Turbidez, Temp, TDS) / todos os dias (pH)
+    - Dados reais: a partir do dia 14 para Turbidez, Temp, TDS
+    - pH: sempre mockado
     
     Args:
         df_qualidade_real: DataFrame com dados reais do ThingSpeak (pode ser None)
@@ -195,31 +196,34 @@ def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
     # Gerar dados mockados dos últimos 15 dias
     _, _, _, _, df_qualidade_mock = ler_dados_qualidade_agua()
     
-    # Se não houver dados reais, retornar apenas os mockados
+    # Data limite para dados mockados (até fim do dia 13 de dezembro de 2024)
+    # A partir do dia 14, apenas ThingSpeak (exceto pH que continua mockado)
+    data_limite_mock = datetime(2025, 12, 13, 23, 59, 59)
+    
+    # Filtrar dados mockados: até dia 13 para Turbidez, Temp, TDS
+    # pH continua mockado para todos os dias
+    df_mock_filtrado = df_qualidade_mock[df_qualidade_mock.index <= data_limite_mock].copy()
+    
+    # Se não houver dados reais, retornar apenas os mockados (até dia 13)
     if df_qualidade_real is None or len(df_qualidade_real) == 0:
-        print("📊 Usando apenas dados mockados (sem dados reais do ThingSpeak)")
-        turbidez_atual = df_qualidade_mock['Turbidez (NTU)'].iloc[-1]
-        ph_atual = df_qualidade_mock['pH'].iloc[-1]
-        temperatura_atual = df_qualidade_mock['Temperatura (°C)'].iloc[-1]
-        solidos_atual = df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1]
-        return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade_mock
+        print("📊 Usando apenas dados mockados até dia 13 (sem dados reais do ThingSpeak)")
+        if len(df_mock_filtrado) > 0:
+            turbidez_atual = df_mock_filtrado['Turbidez (NTU)'].iloc[-1]
+            ph_atual = df_mock_filtrado['pH'].iloc[-1]
+            temperatura_atual = df_mock_filtrado['Temperatura (°C)'].iloc[-1]
+            solidos_atual = df_mock_filtrado['Sólidos Dissolvidos (mg/L)'].iloc[-1]
+            return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_mock_filtrado
+        else:
+            # Sem dados mockados disponíveis
+            return 0, 7.0, 25, 0, pd.DataFrame()
     
-    # Usar dados atuais reais do processamento
-    if dados_processados:
-        turbidez_atual = dados_processados.get('turbidez', df_qualidade_mock['Turbidez (NTU)'].iloc[-1])
-        ph_atual = dados_processados.get('ph', df_qualidade_mock['pH'].iloc[-1])
-        temperatura_atual = dados_processados.get('temperatura', df_qualidade_mock['Temperatura (°C)'].iloc[-1])
-        solidos_atual = dados_processados.get('solidos_dissolvidos', df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1])
-    else:
-        turbidez_atual = df_qualidade_mock['Turbidez (NTU)'].iloc[-1]
-        ph_atual = df_qualidade_mock['pH'].iloc[-1]
-        temperatura_atual = df_qualidade_mock['Temperatura (°C)'].iloc[-1]
-        solidos_atual = df_qualidade_mock['Sólidos Dissolvidos (mg/L)'].iloc[-1]
-    
-    # Garantir que ambos os índices são DatetimeIndex
+    # Garantir que o índice dos dados reais é DatetimeIndex
     if not isinstance(df_qualidade_real.index, pd.DatetimeIndex):
         print("⚠️ Índice do DataFrame real não é DatetimeIndex")
-        return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_qualidade_mock
+        if len(df_mock_filtrado) > 0:
+            return df_mock_filtrado['Turbidez (NTU)'].iloc[-1], df_mock_filtrado['pH'].iloc[-1], \
+                   df_mock_filtrado['Temperatura (°C)'].iloc[-1], df_mock_filtrado['Sólidos Dissolvidos (mg/L)'].iloc[-1], df_mock_filtrado
+        return 0, 7.0, 25, 0, df_mock_filtrado
     
     # Normalizar timezones (remover timezone para comparação)
     try:
@@ -229,35 +233,57 @@ def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
         pass
     
     try:
-        if hasattr(df_qualidade_mock.index, 'tz') and df_qualidade_mock.index.tz is not None:
-            df_qualidade_mock.index = df_qualidade_mock.index.tz_localize(None)
+        if hasattr(df_mock_filtrado.index, 'tz') and df_mock_filtrado.index.tz is not None:
+            df_mock_filtrado.index = df_mock_filtrado.index.tz_localize(None)
     except (AttributeError, TypeError):
         pass
     
-    # Combinar: manter dados mockados e sobrescrever com dados reais onde houver
-    # Criar uma cópia do DataFrame mockado
-    df_combinado = df_qualidade_mock.copy()
+    # Combinar: dados mockados até dia 13 + dados reais do ThingSpeak a partir do dia 14
+    # EXCEÇÃO: pH continua sendo mockado para todos os dias
     
-    # Para cada registro real, sobrescrever o mockado se existir ou adicionar se for mais recente
+    # Começar com os dados mockados até dia 13
+    df_combinado = df_mock_filtrado.copy()
+    
+    # Adicionar dados reais do ThingSpeak
     for idx in df_qualidade_real.index:
-        if idx in df_combinado.index:
-            # Sobrescrever dados mockados com dados reais
-            df_combinado.loc[idx] = df_qualidade_real.loc[idx]
-        elif idx > df_combinado.index.max():
-            # Adicionar dados reais mais recentes que os mockados
-            df_combinado = pd.concat([df_combinado, df_qualidade_real.loc[[idx]]])
+        # Gerar pH mockado para cada registro (real ou não)
+        rand = np.random.random()
+        if rand < 0.7:  # 70% ideal
+            ph_mock = np.random.uniform(6.5, 8.5)
+        elif rand < 0.95:  # 25% alerta
+            if np.random.random() < 0.5:
+                ph_mock = np.random.uniform(6.0, 6.5)
+            else:
+                ph_mock = np.random.uniform(8.5, 9.5)
+        else:  # 5% crítico
+            if np.random.random() < 0.5:
+                ph_mock = np.random.uniform(5.0, 6.0)
+            else:
+                ph_mock = np.random.uniform(9.5, 10.0)
+        
+        if idx <= data_limite_mock:
+            # Até dia 13: sobrescrever mockados com dados reais (exceto pH)
+            if idx in df_combinado.index:
+                ph_valor_mock = df_combinado.loc[idx, 'pH']  # Preservar pH mockado
+                df_combinado.loc[idx] = df_qualidade_real.loc[idx]
+                df_combinado.loc[idx, 'pH'] = ph_valor_mock  # Restaurar pH mockado
+        else:
+            # A partir do dia 14: usar apenas dados reais do ThingSpeak + pH mockado
+            nova_linha = df_qualidade_real.loc[[idx]].copy()
+            nova_linha['pH'] = ph_mock  # pH sempre mockado
+            df_combinado = pd.concat([df_combinado, nova_linha])
     
     df_combinado = df_combinado.sort_index()
     
     # Atualizar valores atuais com a última medição do DataFrame combinado
     ultima_medicao = df_combinado.iloc[-1]
     turbidez_atual = ultima_medicao['Turbidez (NTU)']
-    ph_atual = ultima_medicao['pH']
+    ph_atual = ultima_medicao['pH']  # pH é mockado
     temperatura_atual = ultima_medicao['Temperatura (°C)']
     solidos_atual = ultima_medicao['Sólidos Dissolvidos (mg/L)']
     
-    print(f"✅ Dados combinados: {len(df_qualidade_mock)} pontos mockados + {len(df_qualidade_real)} pontos reais = {len(df_combinado)} total")
-    print(f"📊 Última medição: Turbidez={turbidez_atual:.2f}, pH={ph_atual:.2f}, Temp={temperatura_atual:.1f}°C, TDS={solidos_atual:.0f}")
+    print(f"✅ Dados combinados: {len(df_mock_filtrado)} pontos mockados (até dia 13) + {len(df_qualidade_real)} pontos reais = {len(df_combinado)} total")
+    print(f"📊 Última medição: Turbidez={turbidez_atual:.2f}, pH={ph_atual:.2f} (mockado), Temp={temperatura_atual:.1f}°C, TDS={solidos_atual:.0f}")
     
     return turbidez_atual, ph_atual, temperatura_atual, solidos_atual, df_combinado
 
