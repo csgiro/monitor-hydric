@@ -300,27 +300,90 @@ def combinar_dados_mockados_e_reais(df_qualidade_real, dados_processados):
 
 def configurar_grafico_plotly(fig, df_data):
     """
-    Configura gráfico Plotly com range inicial de 3 dias.
-    Usuário pode fazer zoom out. Autoscale/Reset retorna aos últimos 3 dias.
+    Configura gráfico Plotly com botões de seleção de período (Última hora, Último dia, Última semana, Último mês).
+    Usuário pode fazer zoom out. Autoscale/Reset retorna ao período selecionado.
     """
-    # Calcular range inicial (últimos 3 dias)
-    range_min_str = None
-    range_max_str = None
+    # Calcular ranges para os diferentes períodos
+    range_hora_str = None
+    range_dia_str = None
+    range_semana_str = None
+    range_mes_str = None
     
     if df_data is not None and len(df_data) > 0 and isinstance(df_data.index, pd.DatetimeIndex):
         data_max = df_data.index.max()
         data_min = df_data.index.min()
-        data_min_range = data_max - timedelta(days=3)
         
-        # Garantir que não vamos além dos dados disponíveis
-        if data_min_range < data_min:
-            data_min_range = data_min
+        # Última hora
+        data_min_hora = data_max - timedelta(hours=1)
+        if data_min_hora < data_min:
+            data_min_hora = data_min
         
-        # Converter para string ISO para garantir interpretação correta pelo Plotly
-        range_min_str = data_min_range.strftime('%Y-%m-%d %H:%M:%S')
-        range_max_str = data_max.strftime('%Y-%m-%d %H:%M:%S')
+        # Último dia
+        data_min_dia = data_max - timedelta(days=1)
+        if data_min_dia < data_min:
+            data_min_dia = data_min
+        
+        # Última semana
+        data_min_semana = data_max - timedelta(days=7)
+        if data_min_semana < data_min:
+            data_min_semana = data_min
+        
+        # Último mês
+        data_min_mes = data_max - timedelta(days=30)
+        if data_min_mes < data_min:
+            data_min_mes = data_min
+        
+        # Converter para string ISO
+        range_hora_str = [data_min_hora.strftime('%Y-%m-%d %H:%M:%S'), data_max.strftime('%Y-%m-%d %H:%M:%S')]
+        range_dia_str = [data_min_dia.strftime('%Y-%m-%d %H:%M:%S'), data_max.strftime('%Y-%m-%d %H:%M:%S')]
+        range_semana_str = [data_min_semana.strftime('%Y-%m-%d %H:%M:%S'), data_max.strftime('%Y-%m-%d %H:%M:%S')]
+        range_mes_str = [data_min_mes.strftime('%Y-%m-%d %H:%M:%S'), data_max.strftime('%Y-%m-%d %H:%M:%S')]
     
-    # Configurar layout geral com range exato de 3 dias
+    # Criar botões de seleção de período
+    buttons = []
+    
+    if range_hora_str and range_dia_str and range_semana_str and range_mes_str:
+        # Botão: Última hora
+        buttons.append(
+            dict(
+                label="Última hora",
+                method="relayout",
+                args=[{"xaxis.range": range_hora_str}],
+                args2=[{"xaxis.range": range_hora_str}]
+            )
+        )
+        
+        # Botão: Último dia
+        buttons.append(
+            dict(
+                label="Último dia",
+                method="relayout",
+                args=[{"xaxis.range": range_dia_str}],
+                args2=[{"xaxis.range": range_dia_str}]
+            )
+        )
+        
+        # Botão: Última semana
+        buttons.append(
+            dict(
+                label="Última semana",
+                method="relayout",
+                args=[{"xaxis.range": range_semana_str}],
+                args2=[{"xaxis.range": range_semana_str}]
+            )
+        )
+        
+        # Botão: Último mês
+        buttons.append(
+            dict(
+                label="Último mês",
+                method="relayout",
+                args=[{"xaxis.range": range_mes_str}],
+                args2=[{"xaxis.range": range_mes_str}]
+            )
+        )
+    
+    # Configurar layout geral com range inicial de última hora
     fig.update_layout(
         xaxis=dict(
             title_text="",
@@ -329,11 +392,30 @@ def configurar_grafico_plotly(fig, df_data):
             type='date',
             showgrid=True,
             gridcolor='rgba(128, 128, 128, 0.2)',
-            range=[range_min_str, range_max_str] if range_min_str and range_max_str else None,
+            range=range_hora_str if range_hora_str else None,
             autorange=False,
             fixedrange=False
         ),
-        hovermode='x unified'
+        hovermode='x unified',
+        # Adicionar menu de botões para seleção de período
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                buttons=buttons,
+                pad={"r": 10, "t": 10},
+                showactive=True,
+                active=0,
+                x=0.0,
+                xanchor="left",
+                y=1.35,
+                yanchor="top",
+                bgcolor="rgba(0,0,0,0)",
+                bordercolor="#1f77b4",
+                borderwidth=1,
+                font=dict(color="#1f77b4")
+            )
+        ] if buttons else []
     )
     
     return fig
